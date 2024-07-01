@@ -1,0 +1,8 @@
+spring.application.name=spbpu-mail
+server.port=8080
+
+mail.url=https://mail.spbstu.ru/
+mail.recheckperiod.mins=10
+
+bot.name=@Name
+bot.token=1234526789:xtcfvghbnjomlkobianver

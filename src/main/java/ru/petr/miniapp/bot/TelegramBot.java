@@ -11,27 +11,20 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.petr.miniapp.config.BotConfig;
 import ru.petr.miniapp.model.MailMessage;
+import ru.petr.miniapp.model.User;
 import ru.petr.miniapp.model.UserMails;
-import ru.petr.miniapp.repository.MyUserRepository;
+import ru.petr.miniapp.repository.UserRepository;
 import ru.petr.miniapp.service.LoginService;
-import ru.petr.miniapp.service.RegistrationService;
 
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class TelegramBot extends TelegramLongPollingBot {
     final BotConfig config;
-
-    private final RegistrationService registrationService;
-    private final MyUserRepository repository;
+    private final UserRepository<User> repository;
     private final LoginService loginService;
 
     @Override
@@ -46,17 +39,20 @@ public class TelegramBot extends TelegramLongPollingBot {
             long chatId = update.getMessage().getChatId();
             String memberName = update.getMessage().getFrom().getFirstName();
 
-
             if(messageText.contains("/login")) {
                 if(repository.contains(chatId)) {
-                    sendMessage(chatId, "Вы уже зарегистрированы!\n Если вы хотите сменить/удалить свои старые данные, то напишите в сообщении /delete");
+                    sendMessage(chatId, "Вы уже зарегистрированы!\nЕсли вы хотите сменить/удалить свои старые данные, то напишите в сообщении /delete");
                     return;
                 }
                 String[] arr = messageText.split("\\s");
                 if(arr[0].equals("/login") && arr.length == 3) {
-                    Date currentDate = Date.from(Instant.now());
                     if(loginService.testLogin(arr[1], arr[2])) {
-                        registrationService.register(chatId, arr[1], arr[2], currentDate);
+                        User user = new User();
+                        user.setMail(arr[1]);
+                        user.setPass(arr[2]);
+                        user.setTelegramNumber(chatId);
+                        user.setLastMessageDate(Date.from(Instant.now()));
+                        repository.save(user);
                         sendMessage(chatId, "Поздравляю! Вы успешно вошли в аккаунт");
                     }else {
                         sendMessage(chatId, "Ошибка! Не удалось войти в аккаунт");

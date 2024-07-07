@@ -18,6 +18,6 @@ public class MailingSubscriber {
     @Sub
     public void subscriber(UserMails message) {
         sender.send(message);
-        log.info("Input message {}", message);
+//        log.info("Input message {}", message);
     }
 }

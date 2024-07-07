@@ -70,7 +70,6 @@ public class LoginService {
     private String finalLogin(String authPage) throws URISyntaxException, IOException, InterruptedException {
         Document doc = Jsoup.parse(authPage);
         String url = doc.getElementsByAttribute("method").attr("action");
-        log.info(url);
 
         List<Element> els = doc.getElementsByAttribute("value");
 

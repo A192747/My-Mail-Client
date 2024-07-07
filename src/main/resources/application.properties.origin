@@ -6,3 +6,7 @@ mail.recheckperiod.mins=10
 
 bot.name=@Name
 bot.token=1234526789:xtcfvghbnjomlkobianver
+
+default.user.mail=example.ex@ex.example.com
+default.user.password=password
+default.user.chatId=123456789

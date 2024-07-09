@@ -10,3 +10,4 @@ bot.token=1234526789:xtcfvghbnjomlkobianver
 default.user.mail=example.ex@ex.example.com
 default.user.password=password
 default.user.chatId=123456789
+default.user.only=true

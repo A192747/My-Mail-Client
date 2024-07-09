@@ -12,14 +12,13 @@ import ru.petr.miniapp.model.MailMessage;
 import ru.petr.miniapp.model.UserMails;
 import ru.petr.miniapp.util.HttpRequestsBuilder;
 
-import java.io.IOException;
-import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 
 @Service
 @Slf4j
@@ -32,48 +31,49 @@ public class MailParserService {
 
     private final HttpClient httpClient;
 
-    public UserMails getNewMails(Date lastMessageDate, String page) throws ParseException {
+    public UserMails getNewMails(Date lastMessageDate, String page) {
         Document document = Jsoup.parse(page);
-        Map<Date, String> datesAuthorsMap = getDatesAuthorsMap(document, lastMessageDate);
-        log.info("Count = " + datesAuthorsMap.size());
+
+        List<Element> mails = getUnreadMailTrs(document, lastMessageDate);
+
         UserMails userMails = new UserMails();
-        if (!datesAuthorsMap.isEmpty()) {
-            userMails.setUserMessages(getMails(document, datesAuthorsMap));
-            return userMails;
-        }
-        return null;
+        userMails.setUserMessages(getMails(mails));
+
+        return userMails;
     }
 
-    private Map<Date, String> getDatesAuthorsMap(Document document, Date lastMessageDate) throws ParseException {
-        List<Date> dates = getListDatesNewMassages(getDates(document), lastMessageDate);
-        Map<Date, String> map = new HashMap<>();
-        List<String> authors = getAuthors(document);
-        for(int i = 0; i < dates.size(); i++) {
-            map.put(dates.get(i), authors.get(i));
+
+    public List<Element> getUnreadMailTrs(Document document, Date lastMessageDate) {
+        List<Element> elements = document.getElementsByTag("tr").stream()
+                .filter(element -> element.hasAttr("style") && element.attr("style").equals("font-weight:bold;"))
+                .toList();
+
+        List<Element> result = new ArrayList<>();
+        for (Element el : elements) {
+            boolean add = el.childNodes().stream()
+                    .filter(elem -> elem.attr("class").contains("sc"))
+                    .allMatch(elem -> formDate(elem.childNodes().get(0).toString()).after(lastMessageDate));
+            if (add) {
+                result.add(el);
+            }
         }
-        return map;
+
+        return result;
     }
 
-    private List<Date> getDates(Document document) throws ParseException {
-        SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm");
-        List<String> datesDirty = document.getElementsByTag("td").stream()
+
+    @SneakyThrows
+    private Date getDate(Element element) {
+        return formDate(element.getElementsByTag("td").stream()
                 .filter(el1 -> el1.hasAttr("nowrap") &&
                         !el1.childNodes().isEmpty() &&
                         el1.childNode(0).toString().matches("\\d{2}\\.\\d{2}\\.\\d{4}&nbsp;\\d{2}:\\d{2}&nbsp;"))
-                .map(element -> element.childNode(0).toString())
-                .toList();
-
-
-        List<Date> dates = new ArrayList<>();
-        for(String str : datesDirty) {
-            dates.add(dateFormat.parse(formDate(str)));
-        }
-
-        return dates;
+                .map(element1 -> element1.childNode(0).toString())
+                .toList().get(0));
     }
 
-    private List<String> getAuthors(Document document) {
-        return  document.getElementsByTag("td").stream()
+    private String getAuthor(Element element) {
+        return element.getElementsByTag("td").stream()
                 .filter(el1 -> el1.hasAttr("nowrap") && !el1.childNodes().isEmpty() &&
                         !el1.childNode(0).toString().equals("&nbsp;") &&
                         !el1.childNode(0).toString().contains("КБ") &&
@@ -83,67 +83,59 @@ public class MailParserService {
                         !el1.toString().contains("h1") &&
                         !el1.childNode(0).toString().matches("\\d{2}\\.\\d{2}\\.\\d{4}&nbsp;\\d{2}:\\d{2}&nbsp;"))
                 .map(ela -> formAuthor(ela.childNode(0).toString()))
-                .toList();
+                .toList().get(0);
 
     }
 
-
-    private String formDate(String str) {
+    @SneakyThrows
+    private Date formDate(String str) {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm");
         String newStr = str.replace("&nbsp;", " ");
-        return newStr.substring(0, newStr.length() - 1);
+        return dateFormat.parse(newStr.substring(0, newStr.length() - 1));
     }
+
     private String formAuthor(String str) {
         return str.replace("&nbsp;", "");
     }
 
 
-    private List<Date> getListDatesNewMassages(List<Date> list, Date current) {
-        List<Date> newMessages = new ArrayList<>();
-        for(Date date: list) {
-            if(date.toInstant().isAfter(current.toInstant())) {
-                newMessages.add(date);
-            } else {
-                break;
-            }
-        }
-        return newMessages;
-    }
-
-    private MailMessage getMessage(Element element) throws URISyntaxException, IOException, InterruptedException {
-        MailMessage message = new MailMessage();
-
-        HttpResponse<String> response = getMainAttr(element);
-        Document document1 = Jsoup.parse(response.body());
-
-        message.setTitle(getTitle(document1));
-        message.setBody(getBody(document1));
-        return message;
-    }
     @SneakyThrows
-    private List<MailMessage> getMails(Document document, Map<Date, String> datesNamesMap) {
-        //Лист id сообщений
-        List<Element> elements = document.getElementsByTag("input").stream().filter(elem -> elem.hasAttr("onclick") && elem.attr("name").equals("chkmsg")).toList();
+    private List<MailMessage> getMails(List<Element> mails) {
 
         List<MailMessage> list = new ArrayList<>();
-        int counter = 0;
-        for (Map.Entry<Date, String> entry: datesNamesMap.entrySet()) {
-            MailMessage message = getMessage(elements.get(counter));
-            message.setDate(entry.getKey());
-            message.setAuthor(entry.getValue());
-            counter++;
-            list.add(message);
+        for (Element element : mails) {
+            list.add(formMail(element));
         }
         return list;
+    }
 
+    private MailMessage formMail(Element mail) {
+        MailMessage msg = new MailMessage();
+        msg.setAuthor(getAuthor(mail));
+        msg.setDate(getDate(mail));
+
+        Document document = Jsoup.parse(getMainAttr(mail).body());
+
+        msg.setTitle(getTitle(document));
+        msg.setBody(getBody(document));
+        return msg;
     }
 
 
-    private HttpResponse<String> getMainAttr(Element element) throws URISyntaxException, IOException, InterruptedException {
+    @SneakyThrows
+    private HttpResponse<String> getMainAttr(Element element) {
+        String mailId = getMailId(element);
         return httpClient.send(
-                requestsBuilder.getHttpRequest(MAIL_URL + "owa/?ae=Item&t=IPM.Note&a=Open&s=Draft&id=" + URLEncoder.encode(element.attr("value"))),
+                requestsBuilder.getHttpRequest(MAIL_URL + "owa/?ae=Item&t=IPM.Note&a=Open&s=Draft&id=" + URLEncoder.encode(mailId)),
                 HttpResponse.BodyHandlers.ofString()
         );
     }
+
+    private String getMailId(Element element) {
+        return element.getElementsByTag("input").stream().filter(elem -> elem.hasAttr("onclick")
+                && elem.attr("name").equals("chkmsg")).toList().get(0).attr("value");
+    }
+
     private String getTitle(Document response) {
         return response.getElementsByTag("input").stream().filter(eleee -> eleee.attr("id").equals("txtsbjldr")).toList().get(0).val();
     }

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -26,6 +27,8 @@ public class TelegramBot extends TelegramLongPollingBot {
     final BotConfig config;
     private final UserRepository<User> repository;
     private final LoginService loginService;
+    @Value("${default.user.only}")
+    private boolean isDefaultUserOnly;
 
     @Override
     public String getBotUsername() { return config.getBotName(); }
@@ -34,7 +37,7 @@ public class TelegramBot extends TelegramLongPollingBot {
     @SneakyThrows
     @Override
     public void onUpdateReceived(@NotNull Update update) {
-        if(update.hasMessage() && update.getMessage().hasText()){
+        if(update.hasMessage() && update.getMessage().hasText() && !isDefaultUserOnly){
             String messageText = update.getMessage().getText();
             long chatId = update.getMessage().getChatId();
             String memberName = update.getMessage().getFrom().getFirstName();
@@ -46,12 +49,12 @@ public class TelegramBot extends TelegramLongPollingBot {
                 }
                 String[] arr = messageText.split("\\s");
                 if(arr[0].equals("/login") && arr.length == 3) {
-                    if(loginService.testLogin(arr[1], arr[2])) {
+                    if(loginService.isAbleToLogin(arr[1], arr[2])) {
                         User user = new User();
                         user.setMail(arr[1]);
                         user.setPass(arr[2]);
                         user.setTelegramNumber(chatId);
-                        user.setLastMessageDate(Date.from(Instant.now()));
+                        user.setLastMessageDate(Date.from(Instant.EPOCH));
                         repository.save(user);
                         sendMessage(chatId, "Поздравляю! Вы успешно вошли в аккаунт");
                     }else {
@@ -96,7 +99,7 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     public void sendUserMails(UserMails mails) {
         Long userId = mails.getUserId();
-        sendMessage(userId, "У вас на почте появились новые сообщения");
+        sendMessage(userId, "У вас на почте есть непрочитанные сообщения \uD83D\uDCE9");
         for (MailMessage message: mails.getUserMessages()) {
             sendMessage(mails.getUserId(), formAnswer(message));
         }
@@ -105,10 +108,10 @@ public class TelegramBot extends TelegramLongPollingBot {
 
     private String formAnswer(MailMessage mailMessages) {
         StringBuilder builder = new StringBuilder();
-        builder.append("От: ").append(mailMessages.getAuthor()).append("\n")
-                .append("Тема: ").append(mailMessages.getTitle()).append("\n")
-                .append("Время прихода: ").append(mailMessages.getDate()).append("\n")
-                .append("Сообщение: \n").append(mailMessages.getBody()).append("\n");
+        builder.append("От ✉\uFE0F: ").append(mailMessages.getAuthor()).append("\n")
+                .append("Тема ✏\uFE0F: ").append(mailMessages.getTitle()).append("\n")
+                .append("Время прихода ⏰: ").append("\n").append(mailMessages.getDate()).append("\n")
+                .append("Сообщение: \uD83D\uDCDD\n").append(mailMessages.getBody()).append("\n");
         return String.valueOf(builder);
 
     }
